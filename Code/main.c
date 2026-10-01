@@ -9,40 +9,39 @@ void SendData(char *dat);
 void Read_ADC(void);
 void UART_OutUDec(unsigned int n);
 
-char CRLF[] = {0x0a, 0x0d, 0x00}; // Salto de línea para Tera Term
+char CRLF[] = {0x0a, 0x0d, 0x00};
 unsigned int ADC_Value;
 
 int main(void)
 {
-    WDTCTL = WDTPW + WDTHOLD; // Detener Watchdog Timer
-
-    // Calibrar el reloj interno (DCO) exactamente a 1 MHz
-    DCOCTL = 0;
-    BCSCTL1 = CALBC1_1MHZ;
+    WDTCTL = WDTPW + WDTHOLD; // Stop WDT
+    
+    // CalibraciÃ³n DCO a 1 MHz
+    DCOCTL = 0; 
+    BCSCTL1 = CALBC1_1MHZ; 
     DCOCTL = CALDCO_1MHZ;
-
-    // Configurar pines de los LEDs
+    
+    P2DIR |= 0xFF; // All P2.x outputs
+    P2OUT &= 0x00; // All P2.x reset
+    
+    P1SEL |= RXD + TXD; // P1.1 = RXD, P1.2=TXD
+    P1SEL2 |= RXD + TXD; 
     P1DIR |= RXLED + TXLED;
-    P1OUT &= ~(RXLED + TXLED);
-
-    // Configurar pines de Hardware UART (P1.1 = RXD, P1.2 = TXD)
-    P1SEL |= RXD + TXD;
-    P1SEL2 |= RXD + TXD;
-
-    // Configurar módulo USCI_A0 para UART a 9600 baudios
-    UCA0CTL1 |= UCSSEL_2; // Usar SMCLK (1 MHz)
-    UCA0BR0 = 104;        // 1MHz / 9600 = 104 (0x68)
-    UCA0BR1 = 0x00;
-    UCA0MCTL = UCBRS2 + UCBRS0; // Modulación (UCBRSx = 5)
-    UCA0CTL1 &= ~UCSWRST; // Inicializar la máquina de estados USCI
-
+    P1OUT &= 0x00;
+    
+    UCA0CTL1 |= UCSSEL_2; // SMCLK
+    UCA0BR0 = 104; // 1MHz / 9600
+    UCA0BR1 = 0x00; 
+    UCA0MCTL = UCBRS2 + UCBRS0; // Modulation UCBRSx = 5
+    UCA0CTL1 &= ~UCSWRST; // Initialize USCI state machine
+    
     while (1)
     {
         Read_ADC();
-        UART_OutUDec(ADC_Value); // Enviar el número
-        SendData(CRLF);          // Enviar salto de línea (Enter)
-
-        __delay_cycles(1000000); // Esperar 1 segundo
+        UART_OutUDec(ADC_Value);
+        SendData(CRLF);
+        
+        __delay_cycles(1000000);
     }
 }
 
@@ -51,30 +50,29 @@ void SendData(char *dat)
     unsigned int j = 0;
     while(dat[j] != 0x00)
     {
-        while (!(IFG2 & UCA0TXIFG)); // Esperar a que el buffer esté listo
-        UCA0TXBUF = dat[j];
+        UCA0TXBUF = (dat[j]);
+        __delay_cycles(1000); // SincronizaciÃ³n original del profesor
         j++;
     }
 }
 
 void Read_ADC(void)
 {
-    ADC10CTL0 = 0x00; // Detener ADC
+    ADC10CTL0 = 0x00; // Stop ADC
+    
+    // Canal A3 (P1.3) y SMCLK
+    ADC10CTL1 = INCH_3 + ADC10SSEL_3; 
+    // Habilitar entrada analÃ³gica en P1.3
+    ADC10AE0 = BIT3; 
+    
+    ADC10CTL0 = ADC10ON + ENC; // Turn on ADC and Enable Conversion
+    ADC10CTL0 |= ADC10SC; // Start conversion
 
-    // Seleccionar Canal A3 (P1.3) y reloj SMCLK
-    ADC10CTL1 = INCH_3 + ADC10SSEL_3;
-    ADC10AE0 = BIT3; // Habilitar entrada analógica en P1.3
-
-    // Encender ADC y habilitar conversión
-    ADC10CTL0 = ADC10ON + ENC;
-    ADC10CTL0 |= ADC10SC; // Iniciar conversión
-
-    while(ADC10CTL1 & ADC10BUSY)
+    while(ADC10CTL1 & ADC10BUSY) // Wait until conversion is complete
     {
-        // Esperar a que termine la conversión
     }
 
-    ADC_Value = ADC10MEM; // Guardar el resultado numérico
+    ADC_Value = ADC10MEM; // Read result
 }
 
 void UART_OutUDec(unsigned int n)
@@ -82,8 +80,8 @@ void UART_OutUDec(unsigned int n)
     if(n >= 10)
     {
         UART_OutUDec(n / 10);
+        __delay_cycles(1000); // SincronizaciÃ³n original del profesor
         n = n % 10;
     }
-    while (!(IFG2 & UCA0TXIFG)); // Esperar a que el buffer esté listo
-    UCA0TXBUF = (n + 0x30);      // Convertir a ASCII y enviar
+    UCA0TXBUF = (n + 0x30);
 }
