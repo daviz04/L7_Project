@@ -36,7 +36,7 @@ int main(void)
     P1OUT &= ~TXLED;      // Start with Red LED OFF
 
     // 4. Configure UART on P1.1 (RXD) and P1.2 (TXD) - STRICT USCI SEQUENCE
-    UCA0CTL1 = UCSWRST;             // **CRITICAL: Put USCI in reset BEFORE configuring**
+    UCA0CTL1 = UCSWRST;             // Put USCI in reset before configuring
     P1SEL |= RXD + TXD;             // Connect P1.1 and P1.2 to USCI_A0 UART
     P1SEL2 |= RXD + TXD;
     UCA0CTL1 |= UCSSEL_2;           // Clock source: SMCLK (1 MHz)
@@ -71,7 +71,7 @@ int main(void)
         SendData("%   Leak ADC: ");
         UART_OutUDec(adc_leak);
 
-        // 3. Priority check: Water leak emergency shutoff!
+        // 3. Priority check: Water leak emergency shutoff
         if (adc_leak > 150)
         {
             TACCR1 = 0;               // Force pump OFF immediately
@@ -109,19 +109,21 @@ int main(void)
 
 int Temperature_value(unsigned int ADC_Value)
 {
-    // Cast to 32-bit long BEFORE multiplying by 3300 to prevent 16-bit overflow!
+    // Cast to 32-bit long before multiplying by 3300
+    //to prevent 16-bit overflow
     long Vout = ((long)ADC_Value * 3300L) / 1023L;
     long tmp = (Vout - 500L) / 10L;
 
     if (tmp < 0)
-        tmp = 0; // Prevent negative numbers in unsigned print function
+        // Prevent negative numbers in unsigned print function
+        tmp = 0;
 
     return (int)tmp;
 }
 
 int Humidity_value(unsigned int ADC_Value)
 {
-    // Cast to signed 32-bit long so values below 155 do not underflow!
+    // Cast to signed 32-bit long so values below 155 do not underflow
     long rh = (((long)ADC_Value - 155L) * 10L) / 65L;
 
     if (rh < 0)
@@ -161,17 +163,17 @@ unsigned int Read_ADC(unsigned int canal)
     if (canal == 3)
     {
         ADC10CTL1 = INCH_3 + ADC10SSEL_3; // Pin P1.3 - Temperature
-        ADC10AE0 = BIT3;                  // Assign ONLY BIT3
+        ADC10AE0 = BIT3;                  // Assign only BIT3
     }
     else if (canal == 4)
     {
         ADC10CTL1 = INCH_4 + ADC10SSEL_3; // Pin P1.4 - Humidity
-        ADC10AE0 = BIT4;                  // Assign ONLY BIT4
+        ADC10AE0 = BIT4;                  // Assign only BIT4
     }
     else if (canal == 5)
     {
         ADC10CTL1 = INCH_5 + ADC10SSEL_3; // Pin P1.5 - Water Leak Probe
-        ADC10AE0 = BIT5;                  // Assign ONLY BIT5
+        ADC10AE0 = BIT5;                  // Assign only BIT5
     }
 
     ADC10CTL0 = SREF_0 + ADC10SHT_2 + ADC10ON + ENC; // 16 clock cycles + Turn on
