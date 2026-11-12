@@ -22,7 +22,8 @@ int main(void)
     // 2. Check and load 1MHz factory calibration
     if (CALBC1_1MHZ == 0xFF)
     {
-        while(1); // Trap CPU if calibration constants are erased
+        while (1)
+            ; // Trap CPU if calibration constants are erased
     }
     DCOCTL = 0;
     BCSCTL1 = CALBC1_1MHZ;
@@ -42,7 +43,7 @@ int main(void)
     UCA0CTL1 |= UCSSEL_2;           // Clock source: SMCLK (1 MHz)
     UCA0BR0 = 104;                  // 1MHz / 9600 = 104
     UCA0BR1 = 0x00;
-    UCA0MCTL = UCBRS0;              // Modulation UCBRSx = 1 (standard for 1MHz 9600)
+    UCA0MCTL = UCBRS0;         // Modulation UCBRSx = 1 (standard for 1MHz 9600)
     UCA0CTL1 &= ~UCSWRST;           // **Release USCI reset to start UART**
 
     // 5. Initiate the motor PWM on P1.6
@@ -54,56 +55,69 @@ int main(void)
 
     while (1)
     {
-        // 1. Read sensors on P1.3, P1.4 and P1.5
+        // Read sensors on P1.3, P1.4 and P1.5
         unsigned int adc_temp = Read_ADC(3);
         int tmp = Temperature_value(adc_temp);
 
         unsigned int adc_hum = Read_ADC(4);
         int hum = Humidity_value(adc_hum);
 
-        unsigned int adc_leak = Read_ADC(5); // 0 when dry, >200 when wet
+        unsigned int adc_leak = Read_ADC(5); // 0 when dry, >150 when wet
 
-        // 2. Send data to Tera Term
+        // Send data to Tera Term
         SendData("Temp: ");
-        UART_OutUDec((unsigned int)tmp);
+        UART_OutUDec((unsigned int) tmp);
         SendData(" C   Humidity: ");
-        UART_OutUDec((unsigned int)hum);
+        UART_OutUDec((unsigned int) hum);
         SendData("%   Leak ADC: ");
         UART_OutUDec(adc_leak);
 
-        // 3. Priority check: Water leak emergency shutoff
+        // PRIORITY 1: Direct Water Leak Emergency Shutoff
         if (adc_leak > 150)
         {
-            TACCR1 = 0;               // Force pump OFF immediately
-            P1OUT |= BIT0;            // Keep Red LED (P1.0) ON solid as visual alarm
-            SendData(" [ALERT: LEAK DETECTED - PUMP OFF]");
+            TACCR1 = 0;               // Force pump OFF immediately (0%)
+            P1OUT |= BIT0;            // Keep Red LED (P1.0) ON solid as alarm
+            SendData(" [ALERT: WATER LEAK DETECTED - PUMP OFF]");
         }
+        // PRIORITY 2: High Humidity: Shutoff
+        else if (hum >= 80)
+        {
+            TACCR1 = 0;     // Stop pump to prevent condensation / pipe pressure
+            P1OUT |= BIT0;            // Turn on Red LED (P1.0) as warning
+            SendData(" [WARNING: HIGH HUMIDITY (>=80%) - PUMP OFF]");
+        }
+        // Normal operation: Safe dry conditions (Temperature PWM Control)
         else
         {
-            // Blink Red LED briefly to show the loop is alive and transmitting
+            // Blink Red LED briefly to show the loop is alive
             P1OUT |= BIT0;
             __delay_cycles(50000);
             P1OUT &= ~BIT0;
 
-            SendData(" [STATUS: OK]");
-
-            // Normal temperature PWM control
-            if (tmp < 22)
+            if (tmp < 20)
             {
-                TACCR1 = 0;
+                TACCR1 = 0;           // 0% Duty Cycle (Motor OFF)
+                SendData(" [PWM: 0% | STATUS: OK]");
             }
-            else if (tmp >= 22 && tmp < 26)
+            else if (tmp >= 20 && tmp < 25)
             {
-                TACCR1 = 500;
+                TACCR1 = 200;         // 20% Duty Cycle
+                SendData(" [PWM: 20% | STATUS: OK]");
             }
-            else if (tmp >= 26)
+            else if (tmp >= 25 && tmp < 30)
             {
-                TACCR1 = 1000;
+                TACCR1 = 500;         // 50% Duty Cycle
+                SendData(" [PWM: 50% | STATUS: OK]");
+            }
+            else // tmp >= 30
+            {
+                TACCR1 = 1000;        // 100% Duty Cycle (Full Speed)
+                SendData(" [PWM: 100% | STATUS: OK]");
             }
         }
 
         SendData(CRLF);          // New line
-        __delay_cycles(950000);  // Wait ~1 sec
+        __delay_cycles(950000);  // Wait 1 sec
     }
 }
 
@@ -111,27 +125,27 @@ int Temperature_value(unsigned int ADC_Value)
 {
     // Cast to 32-bit long before multiplying by 3300
     //to prevent 16-bit overflow
-    long Vout = ((long)ADC_Value * 3300L) / 1023L;
+    long Vout = ((long) ADC_Value * 3300L) / 1023L;
     long tmp = (Vout - 500L) / 10L;
 
     if (tmp < 0)
         // Prevent negative numbers in unsigned print function
         tmp = 0;
 
-    return (int)tmp;
+    return (int) tmp;
 }
 
 int Humidity_value(unsigned int ADC_Value)
 {
     // Cast to signed 32-bit long so values below 155 do not underflow
-    long rh = (((long)ADC_Value - 155L) * 10L) / 65L;
+    long rh = (((long) ADC_Value - 155L) * 10L) / 65L;
 
     if (rh < 0)
         rh = 0;
     if (rh > 100)
         rh = 100;
 
-    return (int)rh;
+    return (int) rh;
 }
 
 void SendData(char *dat)
@@ -139,7 +153,8 @@ void SendData(char *dat)
     unsigned int j = 0;
     while (dat[j] != 0x00)
     {
-        while (!(IFG2 & UCA0TXIFG));
+        while (!(IFG2 & UCA0TXIFG))
+            ;
         UCA0TXBUF = dat[j];
         j++;
     }
@@ -152,7 +167,8 @@ void UART_OutUDec(unsigned int n)
         UART_OutUDec(n / 10);
         n = n % 10;
     }
-    while (!(IFG2 & UCA0TXIFG));
+    while (!(IFG2 & UCA0TXIFG))
+        ;
     UCA0TXBUF = (n + 0x30);
 }
 
@@ -178,7 +194,8 @@ unsigned int Read_ADC(unsigned int canal)
 
     ADC10CTL0 = SREF_0 + ADC10SHT_2 + ADC10ON + ENC; // 16 clock cycles + Turn on
     ADC10CTL0 |= ADC10SC;                            // Start conversion
-    while (ADC10CTL1 & ADC10BUSY);                   // Wait until conversion finishes
+    while (ADC10CTL1 & ADC10BUSY)
+        ;                   // Wait until conversion finishes
 
     return ADC10MEM;
 }
